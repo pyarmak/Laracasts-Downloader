@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
 	"github.com/cheggaaa/pb"
-	"github.com/kennygrant/sanitize"
 	"io"
 	"io/ioutil"
 	"log"
@@ -16,6 +15,7 @@ import (
 	"strings"
 	"regexp"
 	"time"
+	"path"
 )
 
 func usage() {
@@ -49,7 +49,7 @@ func main() {
 	scraper := newScraper(config)
 
 	// First login to get more data in views
-	log.Println("Logging in")
+	log.Println("Logging in...")
 	err := scraper.Login()
 
 	if err != nil {
@@ -100,16 +100,30 @@ type lesson struct {
 	Series string
 }
 
+// Makes a string safe to use in a file name (e.g. for saving file atttachments)
+func sanitize(text string) string {
+	// Start with lowercase string
+	fileName := strings.ToLower(text)
+	fileName = path.Clean(path.Base(fileName))
+	fileName = strings.Trim(fileName, " ")
+
+	// Remove all other unrecognised characters - NB we do allow any printable characters
+	legal, err := regexp.Compile(`[^\w\s\d\-_~,;\[\]\(\)]`)
+	if err == nil {
+		fileName = legal.ReplaceAllString(fileName, "")
+	}
+
+	// Remove any double dashes caused by existing - in name
+	fileName = strings.Replace(fileName, "--", "-", -1)
+
+	// NB this may be of length 0, caller must check
+	return fileName
+}
+
 // Determine what the proper filename for a lesson should be
 func (l *lesson) GetFilename(contentType string) (string, error) {
-	basename := ""
+	basename := l.Name
 	pieces := strings.Split(l.URL, "/")
-
-	if l.Type == "episode" {
-		basename = pieces[len(pieces)-3]
-	} else {
-		basename = pieces[len(pieces)-1]
-	}
 
 	pieces = strings.Split(contentType, "/")
 	extension := pieces[len(pieces)-1]
@@ -209,9 +223,9 @@ func (s *scraper) GetAvailableLessons(url string) ([]lesson, error) {
 		lesson := lesson{}
 		lesson.ID = lessonID
 		lesson.URL = href
-		lesson.Name = name
+		lesson.Name = sanitize(name)
 		lesson.Type = typ
-		lesson.Series = sanitize.Path(series)
+		lesson.Series = sanitize(series)
 
 		episodes = append(episodes, lesson)
 		// log.Println("Series name for " + lesson.Name + ": " + lesson.Series)
